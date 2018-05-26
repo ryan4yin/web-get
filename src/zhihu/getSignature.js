@@ -1,4 +1,4 @@
-// 这里的代码，是从知乎网页里提取出来的，登录时的一个参数：signature，需要通过这个函数计算。
+// 这里的代码，是从知乎网页里提取出来的. 登录时的一个参数：signature，需要通过这个函数计算。
 // 说明见 [python模拟登陆知乎](https://zhuanlan.zhihu.com/p/32898234)
 
 function getSignature(timestamp){
