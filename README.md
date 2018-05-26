@@ -24,6 +24,7 @@
 ### 反爬虫的应对
 
 - [常见的反爬虫和应对方法](https://zhuanlan.zhihu.com/p/20520370)
+- [PythonSpiderNotes](https://github.com/lining0806/PythonSpiderNotes)
 
 ### 视频下载器
 
