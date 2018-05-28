@@ -27,7 +27,7 @@ user_agent = {
 
 # b站的验证措施，需要用到这几个固定参数
 _APP_KEY = '84956560bc028eb7'
-_BILIBILI_KEY = '94aba54af9065f71de72f5508f1cd42e'    # for av
+_BILIBILI_KEY = '94aba54af9065f71de72f5508f1cd42e'  # for av
 _BILIBILI_KEY_2 = '9b288147e5474dd2aa67085f716c560d'  # for bangumi
 
 av_api_url = 'http://interface.bilibili.com/v2/playurl'
@@ -47,14 +47,21 @@ class Bilibili:
 
     def __init__(self, url):
         # 首先检测url是否符合要求，并提取出需要的信息
-        url_type, self._args = self.type_check(url)
+        url_type, self._args = self.__type_check(url)
 
         self.__session = requests.Session()
         self.__text = self.__session.get(url=self._args['url'], headers=user_agent).text  # 拿到给定网页
 
-        self._parser = self.get_parser(url_type)
+        self._parser = self.__get_parser(url_type)
 
-    def type_check(self, url):
+        self.download_url = self.__get_download_urls(url_type)
+
+    def __get_download_urls(self, url_type):
+        """获取下载链接"""
+
+        return True
+
+    def __type_check(self, url):
         """use match，not fullmatch"""
         match = self.regex_ep.match(url)  # 1. 是动漫的播放页？
         if match:
@@ -71,15 +78,17 @@ class Bilibili:
         # 否则，就是不支持的链接。
         raise RuntimeError("The given link is not supported.")
 
-    def get_parser(self, url_type):
-        if url_type == 'bangumi':
-            return BangumiEpParser(self.__text)
-        elif url_type == 'bangumi_home':
-            return BangumiHomeParser(self.__text)
-        elif url_type == 'av':
-            return AvParser(self.__text)
-        else:
-            raise RuntimeError("url_type不可能为其他参数，请检查代码。")
+    def __get_parser(self, url_type):
+        """跟据链接类型不同，使用不同的解析器"""
+        parser = {
+            'bangumi': BangumiEpParser,
+            'bangumi_home': BangumiHomeParser,
+            'av': AvParser
+        }
+        try:
+            return parser[url_type](self.__text)
+        except KeyError as e:
+            raise RuntimeError("url_type不可能为其他参数，请检查代码。", e)
 
     def _get_av_info(self, cid, quality):
         """通过 av_api 获取av视频源地址。"""
@@ -97,6 +106,7 @@ class Bilibili:
         sign = hashlib.md5(bytes(params_str + _BILIBILI_KEY, 'utf8')).hexdigest()
         params.update({'sign': sign})
 
+        # 发送获取av信息的请求
         headers = {
             'refer': self._args['url'],
         }
@@ -109,13 +119,13 @@ class Bilibili:
 
         return resp.json()
 
-    def _get_bangumi_info(self, cid, quality):
+    def _get_bangumi_info(self, cid, quality, movie=False):
         """通过 bangumi_api 获取bangumi视频源地址。
         流程和 _get_av_info 完全类似，只是参数和返回值有差"""
         params = {
             'cid': cid,
-            'module': 'bangumi',  # 好像还有个 module 是 bangumi_movie
-            'player': 1,   # 1 好像是 flash player?
+            'module': 'bangumi' if not movie else 'movie',
+            'player': 1,  # 1 好像是 flash player?
             'quality': quality,
             'ts': int(time()),  # timestamp 时间戳
         }
@@ -125,6 +135,7 @@ class Bilibili:
         sign = hashlib.md5(bytes(params_str + _BILIBILI_KEY_2, 'utf8')).hexdigest()
         params.update({'sign': sign})
 
+        # 发送获取bangumi信息的请求
         headers = {
             'refer': self._args['url'],
         }
@@ -163,9 +174,16 @@ class BangumiEpParser:
     regex_epinfo = re.compile(r'"epInfo":({[^}]*})')
     # 此动漫的episodes，json格式（位置：网页源代码）
     regex_epList = re.compile(r'"epList":(\[[^\]]*\])')
+    # 此动漫的名字
+    regex_title = re.compile(r'"title":"([^"]+)"')
 
     def __init__(self, text):
         self.text = text
+
+    def get_title(self):
+        match = self.regex_title.search(self.text)
+        title = match.group(1)
+        return title
 
     def get_epinfo(self):
         match = self.regex_epinfo.search(self.text)
@@ -184,10 +202,24 @@ class BangumiHomeParser:
     # 和 BangumiEP 中的epList一模一样的内容，只是名字不同。
     regex_episodes = re.compile(r'"episodes":(\[[^\]]*\])')
 
+    # 此动漫的名字
+    regex_title = re.compile(r'<span class="media-info-title-t">([^<>]+)</span>')
+
     def __init__(self, text):
         self.text = text
+
+    def get_title(self):
+        match = self.regex_title.search(self.text)
+        title = match.group(1)
+        return title
 
     def get_episodes(self):
         match = self.regex_episodes.search(self.text)
         json_str = match.group(1)
         return json.loads(json_str)
+
+
+
+
+
+
