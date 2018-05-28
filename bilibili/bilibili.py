@@ -9,11 +9,14 @@ P.S. B站以前曾经使用过好几种链接，这里就只解析现在使用�
 import hashlib
 import re
 import json
+from time import time
 from urllib import parse
+import xmltodict
 
 import requests
 
 import logging
+
 logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
 
@@ -27,22 +30,11 @@ _APP_KEY = '84956560bc028eb7'
 _BILIBILI_KEY = '94aba54af9065f71de72f5508f1cd42e'    # for av
 _BILIBILI_KEY_2 = '9b288147e5474dd2aa67085f716c560d'  # for bangumi
 
-# 视频清晰度, 复制自bilibili-helper
-QUALITY_DISPLAY_NAMES = {
-    116: '2k?',
-    112: '1080P+',
-    80: '1080P',
-    64: '720P',
-    48: '720P',
-    32: '480P',
-    16: '360P',
-}
-
-api_url = 'http://interface.bilibili.com/v2/playurl'
+av_api_url = 'http://interface.bilibili.com/v2/playurl'
 bangumi_api_url = 'http://bangumi.bilibili.com/player/web_api/playurl'
 
 
-class BilibiliDownloader:
+class Bilibili:
     """主类"""
     # 1. 动漫播放页
     regex_ep = re.compile(r"(?P<url>https?://www\.bilibili\.com/bangumi/play/ep(?P<ep>\d+))")
@@ -55,12 +47,12 @@ class BilibiliDownloader:
 
     def __init__(self, url):
         # 首先检测url是否符合要求，并提取出需要的信息
-        url_type, self.args = self.type_check(url)
+        url_type, self._args = self.type_check(url)
 
         self.__session = requests.Session()
-        self.__text = self.__session.get(url=self.args['url'], headers=user_agent).text  # 拿到给定网页
+        self.__text = self.__session.get(url=self._args['url'], headers=user_agent).text  # 拿到给定网页
 
-        self.parser = self.get_parser(url_type)
+        self._parser = self.get_parser(url_type)
 
     def type_check(self, url):
         """use match，not fullmatch"""
@@ -89,8 +81,8 @@ class BilibiliDownloader:
         else:
             raise RuntimeError("url_type不可能为其他参数，请检查代码。")
 
-    def get_video_info(self, cid, quality):
-        """通过 interface.bilibili.com 的 api 获取视频源地址。"""
+    def _get_av_info(self, cid, quality):
+        """通过 av_api 获取av视频源地址。"""
         params = {
             'appkey': _APP_KEY,
             'cid': cid,
@@ -99,18 +91,53 @@ class BilibiliDownloader:
             'quality': quality,  # 这俩相同的参数指定视频质量
             'type': '',  # 这个指定是flv还是mp4
         }
+
+        # 签名: 这一步，需要用到 _BILIBILI_KEY
         params_str = parse.urlencode(params, encoding='utf-8')
-        sign = hashlib.md5(bytes(params_str + _BILIBILI_KEY, 'utf8')).hexdigest()  # 签名这一步，需要用到 _BILIBILI_KEY
+        sign = hashlib.md5(bytes(params_str + _BILIBILI_KEY, 'utf8')).hexdigest()
         params.update({'sign': sign})
 
         headers = {
-            'refer': self.args['url'],
+            'refer': self._args['url'],
         }
         headers.update(user_agent)
 
-        resp = requests.get(url=api_url, params=params, headers=headers)
+        resp = requests.get(url=av_api_url, params=params, headers=headers)
+
+        if resp.status_code != 200:
+            logger.error(f"请求失败，状态码为{resp.status_code}")
 
         return resp.json()
+
+    def _get_bangumi_info(self, cid, quality):
+        """通过 bangumi_api 获取bangumi视频源地址。
+        流程和 _get_av_info 完全类似，只是参数和返回值有差"""
+        params = {
+            'cid': cid,
+            'module': 'bangumi',  # 好像还有个 module 是 bangumi_movie
+            'player': 1,   # 1 好像是 flash player?
+            'quality': quality,
+            'ts': int(time()),  # timestamp 时间戳
+        }
+
+        # 签名: 这一步，需要用到 _BILIBILI_KEY_2
+        params_str = parse.urlencode(params, encoding='utf-8')
+        sign = hashlib.md5(bytes(params_str + _BILIBILI_KEY_2, 'utf8')).hexdigest()
+        params.update({'sign': sign})
+
+        headers = {
+            'refer': self._args['url'],
+        }
+        headers.update(user_agent)
+
+        resp = requests.get(url=bangumi_api_url, params=params, headers=headers)
+
+        if resp.status_code != 200:
+            logger.error(f"请求失败，状态码为{resp.status_code}")
+
+        # 使用 xmltodict 将 xml 转换为 dict 对象
+        info = xmltodict.parse(resp.text)
+        return dict(info.get('video'))
 
 
 class AvParser:

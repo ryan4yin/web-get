@@ -5,6 +5,7 @@ name = "ustc-pypi"
 
 [packages]
 requests = "*"
+xmltodict = "*"
 
 [dev-packages]
 
