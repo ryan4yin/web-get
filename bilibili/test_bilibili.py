@@ -2,6 +2,7 @@
 
 
 import unittest
+from pprint import pprint
 
 from utils import *
 from bilibili import Bilibili
@@ -57,6 +58,7 @@ class TestData:
             'ep-info': {'accept_format': 'flv,flv720,flv360',
                         'accept_quality': '80,64,15',
                         'bp': '0',
+                        # 'durl': [],  # durl 每次请求都可能会有不同的结果
                         'format': 'flv360',
                         'from': 'local',
                         'has_paid': 'false',
@@ -77,7 +79,7 @@ class TestData:
             'url': "https://www.bilibili.com/bangumi/media/md862",
             'title': "丹特丽安的书架",
             'ep-len': 13,  # 选错了，其实应该选个更新完结的动画。这个可能会变化
-            'ep-2-info': {'aid': 115913,
+            'ep-1': {'aid': 115913,
                           'cid': 193520,
                           'cover': 'http://i0.hdslb.com/bfs/bangumi/698c29861265e2ca8f0b80dd3e90ffdd78adf0d5.jpg',
                           'ep_id': 15499,
@@ -167,4 +169,9 @@ class TestBilibili(unittest.TestCase):
             # 1. 测试 get_epList
             episodes = home_parser.get_episodes()
             self.assertEqual(len(episodes), item['ep-len'])
-            self.assertEqual(item['ep-2-info'], episodes[1])
+            self.assertEqual(item['ep-1'], episodes[1])  # 因为这片还有个第0话。。
+
+    def test_download_p(self):
+        for item in TestData.test_av:
+            bilibili_parser = get_bilibili_parser(item['url'])
+            bilibili_parser.download_p()

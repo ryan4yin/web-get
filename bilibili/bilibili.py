@@ -17,7 +17,7 @@ import requests
 
 import logging
 
-logging.basicConfig(level=logging.WARNING)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # 复制自 chrome
@@ -47,19 +47,52 @@ class Bilibili:
 
     def __init__(self, url):
         # 首先检测url是否符合要求，并提取出需要的信息
-        url_type, self._args = self.__type_check(url)
+        self.__url_type, self._args = self.__type_check(url)
 
         self.__session = requests.Session()
-        self.__text = self.__session.get(url=self._args['url'], headers=user_agent).text  # 拿到给定网页
+        self.__session.headers.update(user_agent)  # 添加默认请求头
+        self.__text = self.__session.get(url=self._args['url']).text  # 拿到给定网页
 
-        self._parser = self.__get_parser(url_type)
+        self._parser = self.__get_parser()
 
-        self.download_url = self.__get_download_urls(url_type)
+    def __del__(self):
+        """析构函数"""
+        self.__session.close()
 
-    def __get_download_urls(self, url_type):
-        """获取下载链接"""
+    def download_url(self, download_url, size, file_name):
+        headers = {
+            'Origin': 'https://www.bilibili.com',
+            'Referer': self._args['url'],
+            'Connection': 'keep-alive',
+            'Accept-Encoding': 'gzip, deflate, br',
+        }
+        logger.info(f"开始下载:{file_name}，大小：{int(size) / (1024**2):.2f}MB")
+        with self.__session.get(download_url, headers=headers, stream=True) as response:
+            with open(file_name, 'wb') as f:
+                length_read = 0
+                chunk_size = 512
+                for chunk in response.iter_content(chunk_size=chunk_size):
+                    if chunk:
+                        length_read += chunk_size
+                        f.write(chunk)
+                        if not length_read % (1024**2):
+                            logger.info(f"进度：{length_read/size:.2f}")
 
-        return True
+    def download_p(self):
+        if self.__url_type == 'av':
+            # 拿到该p的cid和part(part是该p的名字)
+            index = self._args['pname'] if self._args['pname'] else 1
+            p_info = self._parser.get_av_pages()[index - 1]
+
+            # 通过cid获取该p的视频信息，80是清晰度
+            video_info = self._get_av_info(p_info['cid'], 80)
+
+            for segment in video_info['durl']:
+                file_name = f"{self._parser.get_title()} - {p_info['part']}-{segment['order']}.{video_info['format']}"
+                self.download_url(segment['url'], segment['size'], file_name)
+
+    def download_playlist(self):
+        pass
 
     def __type_check(self, url):
         """use match，not fullmatch"""
@@ -78,7 +111,7 @@ class Bilibili:
         # 否则，就是不支持的链接。
         raise RuntimeError("The given link is not supported.")
 
-    def __get_parser(self, url_type):
+    def __get_parser(self):
         """跟据链接类型不同，使用不同的解析器"""
         parser = {
             'bangumi': BangumiEpParser,
@@ -86,7 +119,7 @@ class Bilibili:
             'av': AvParser
         }
         try:
-            return parser[url_type](self.__text)
+            return parser[self.__url_type](self.__text)
         except KeyError as e:
             raise RuntimeError("url_type不可能为其他参数，请检查代码。", e)
 
@@ -108,9 +141,8 @@ class Bilibili:
 
         # 发送获取av信息的请求
         headers = {
-            'refer': self._args['url'],
+            'Referer': self._args['url'],
         }
-        headers.update(user_agent)
 
         resp = requests.get(url=av_api_url, params=params, headers=headers)
 
@@ -137,9 +169,8 @@ class Bilibili:
 
         # 发送获取bangumi信息的请求
         headers = {
-            'refer': self._args['url'],
+            'Referer': self._args['url'],
         }
-        headers.update(user_agent)
 
         resp = requests.get(url=bangumi_api_url, params=params, headers=headers)
 
@@ -157,8 +188,15 @@ class AvParser:
     # 匹配此av的pages，json格式（位置：网页源代码）
     regex_pages = re.compile(r'"pages":(\[[^\]]*\])')
 
+    regex_title = re.compile(r'"title":"([^"]+)"')
+
     def __init__(self, text):
         self.text = text  # 网页内容
+
+    def get_title(self):
+        match = self.regex_title.search(self.text)
+        title = match.group(1)
+        return title
 
     def get_av_pages(self):
         """获取av的pages列表，几个Parser的get方法代码高度重复。"""
@@ -217,9 +255,3 @@ class BangumiHomeParser:
         match = self.regex_episodes.search(self.text)
         json_str = match.group(1)
         return json.loads(json_str)
-
-
-
-
-
-
