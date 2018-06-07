@@ -60,6 +60,7 @@ class Bilibili:
         self.__session.close()
 
     def download_url(self, download_url, size, file_name):
+        """下载函数，从指定的url，下载B站视频"""
         headers = {
             'Origin': 'https://www.bilibili.com',
             'Referer': self._args['url'],
